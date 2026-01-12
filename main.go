@@ -26,6 +26,7 @@ import (
 
 // runWebServer initializes and starts the web server for the 3x-ui panel.
 func runWebServer() {
+
 	log.Printf("Starting %v %v", config.GetName(), config.GetVersion())
 
 	switch config.GetLogLevel() {

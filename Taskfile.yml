@@ -1,0 +1,61 @@
+version: '3'
+
+# ============== Variables ==============
+vars:
+  # Short git commit hash
+  COMMIT_HASH:
+    sh: git rev-parse --short HEAD
+  # Latest tag version
+  VERSION:
+    sh: git describe --tags --abbrev=0
+  # Go build flags with embedded version info
+  GO_FLAGS: "-s -w"
+
+  DEV_RUN_FLAGS: ""
+
+  BIN: x-ui
+  OUT: ./dist
+  PLATFORMS: ["linux amd64", "freebsd amd64","windows amd64"]
+
+# ============== Tasks ==============
+tasks:
+
+  # Clean Go environment
+  clean:
+    desc: "Clean Go modules and build artifacts"
+    silent: true
+    cmds:
+      - echo "=== Cleaning Go Environment ==="
+      - go mod tidy
+      - go clean
+      - echo "=== Clean Completed ==="
+
+  # Build binary
+  build:
+    desc: "Build binary"
+    silent: true
+    cmds:
+      - echo "=== Building Binary ==="
+      - |
+        go build -ldflags="-s -w" \
+        -o "./{{.BIN}}.exe" \
+        -v "./main.go"
+      - echo "=== Build Completed ==="
+
+  build-all:
+    desc: "Build binaries for multiple OS/ARCH"
+    silent: true
+    cmds:
+      - echo "=== Building binaries for systems ==="
+      - mkdir -p "{{.OUT}}"
+      - for:
+          matrix:
+            OS: ['windows', 'linux', 'darwin']
+            ARCH: ['amd64', 'arm64']
+        cmd: |
+          echo "Build for -> {{.ITEM.OS}}/{{.ITEM.ARCH}}: {{.BIN}}-{{.ITEM.OS}}-{{.ITEM.ARCH}}{{if eq .ITEM.OS "windows"}}.exe{{end}}" && \
+          GOOS={{.ITEM.OS}} GOARCH={{.ITEM.ARCH}} \
+          go build -trimpath -ldflags="{{.GO_FLAGS}}" \
+          -o "./{{.OUT}}/{{.BIN}}-{{.ITEM.OS}}-{{.ITEM.ARCH}}{{if eq .ITEM.OS "windows"}}.exe{{end}}" \
+          -v "./main.go"
+      - echo "=== Building binaries completed ==="

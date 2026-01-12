@@ -129,34 +129,24 @@ func CPUPercentRaw() (float64, error) {
 		return 0, fmt.Errorf("insufficient cpu fields")
 	}
 
-	// Conform with standard Linux CPU accounting
-	var user, nice, system, idle, iowait, irq, softirq, steal uint64
-	user = nums[0]
-	if len(nums) > 1 {
-		nice = nums[1]
-	}
-	if len(nums) > 2 {
-		system = nums[2]
-	}
-	if len(nums) > 3 {
-		idle = nums[3]
-	}
-	if len(nums) > 4 {
-		iowait = nums[4]
-	}
-	if len(nums) > 5 {
-		irq = nums[5]
-	}
-	if len(nums) > 6 {
-		softirq = nums[6]
-	}
-	if len(nums) > 7 {
-		steal = nums[7]
-	}
+	var (
+		total   = uint64(0)
+		idleAll = uint64(0)
+	)
 
-	idleAll := idle + iowait
-	nonIdle := user + nice + system + irq + softirq + steal
-	total := idleAll + nonIdle
+	// Conform with standard Linux CPU accounting
+	// user, nice, system, idle, iowait, irq, softirq, steal
+	for i := range nums {
+		if i >= 8 {
+			break
+		}
+
+		if i == 3 || i == 4 {
+			idleAll += nums[i]
+		}
+
+		total += nums[i]
+	}
 
 	cpuMu.Lock()
 	defer cpuMu.Unlock()

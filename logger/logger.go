@@ -11,10 +11,11 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
+	"sync/atomic"
 	"time"
-	"unsafe"
 
 	"github.com/mhsanaei/3x-ui/v2/config"
+	"github.com/mhsanaei/3x-ui/v2/util/fastuse"
 	"github.com/mhsanaei/3x-ui/v2/util/ringbuffer"
 	"github.com/op/go-logging"
 )
@@ -28,10 +29,11 @@ var (
 	loggingBuffer *ringbuffer.ByteRing
 	logger        *logging.Logger
 	logFile       *os.File
+	maxLines      int64
 )
 
 func init() {
-	loggingBuffer = ringbuffer.NewByteRing(1 << 22) // 4MB
+	loggingBuffer = ringbuffer.NewByteRing(1 << 20 * 5) // 5MB
 }
 
 // InitLogger initializes dual logging backends: console/syslog and file.
@@ -193,6 +195,7 @@ func addToBuffer(level string, newLog string) {
 	var b strings.Builder
 	b.Grow(len(newLog) + 64)
 
+	b.WriteByte('\t')
 	b.WriteString(time.Now().Format(timeFormat))
 	b.WriteByte(' ')
 	b.WriteString(level)
@@ -205,11 +208,16 @@ func addToBuffer(level string, newLog string) {
 
 // GetLogs retrieves up to c log entries from the buffer that are at or below the specified level.
 func GetLogs(c int, level string) []string {
-	var output []string
 	levelWants, err := logging.LogLevel(level)
 	if err != nil {
 		levelWants = logging.DEBUG
 	}
+
+	var (
+		i           = int64(0)
+		iToAlloc    = atomic.LoadInt64(&maxLines)
+		outputLines = make([]string, 0, iToAlloc)
+	)
 
 	a, b := loggingBuffer.Bytes2()
 	r := io.MultiReader(bytes.NewReader(a), bytes.NewReader(b))
@@ -225,7 +233,8 @@ func GetLogs(c int, level string) []string {
 			if err == io.EOF {
 				if len(rec) > 0 {
 					if log, ok := parseLineLevel(rec, levelWants); ok {
-						output = append(output, log)
+						outputLines = append(outputLines, log)
+						i++
 					}
 				}
 			}
@@ -233,14 +242,20 @@ func GetLogs(c int, level string) []string {
 		}
 
 		if log, ok := parseLineLevel(rec, levelWants); ok {
-			output = append(output, log)
+			outputLines = append(outputLines, log)
+			i++
 		}
 	}
 
-	return output
+	atomic.CompareAndSwapInt64(&maxLines, iToAlloc, i)
+	return outputLines
 }
 
 func parseLineLevel(rec []byte, maxLvl logging.Level) (line string, ok bool) {
+	if bytes.IndexByte(rec, '\t') == -1 {
+		return "", false
+	}
+
 	i := bytes.Index(rec, []byte(" - "))
 	if i == -1 {
 		return "", false
@@ -253,18 +268,28 @@ func parseLineLevel(rec []byte, maxLvl logging.Level) (line string, ok bool) {
 		return "", false
 	}
 
-	recLvl, err := logging.LogLevel(bytes2String(left[j+1:]))
+	recLvl, err := bytes2logLevel(left[j+1:])
 	if err != nil {
 		return "", false
 	}
 
-	if recLvl <= maxLvl {
-		return string(rec), true
+	if levelEnabled(maxLvl, recLvl) {
+		return fastuse.Bytes2String(rec), true
 	}
 
 	return "", false
 }
 
-func bytes2String(b []byte) string {
-	return unsafe.String(unsafe.SliceData(b), len(b))
+func bytes2logLevel(p []byte) (logging.Level, error) {
+	return logging.LogLevel(fastuse.Bytes2String(p))
+}
+
+func levelEnabled(base, level logging.Level) bool {
+	if base < logging.CRITICAL || base > logging.DEBUG {
+		return false
+	}
+	if level < logging.CRITICAL || level > logging.DEBUG {
+		return false
+	}
+	return level <= base
 }
