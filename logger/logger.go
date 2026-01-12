@@ -27,9 +27,9 @@ const (
 
 var (
 	loggingBuffer *ringbuffer.ByteRing
+	maxLines      int64
 	logger        *logging.Logger
 	logFile       *os.File
-	maxLines      int64
 )
 
 func init() {
@@ -208,11 +208,6 @@ func addToBuffer(level string, newLog string) {
 
 // GetLogs retrieves up to c log entries from the buffer that are at or below the specified level.
 func GetLogs(c int, level string) []string {
-	levelWants, err := logging.LogLevel(level)
-	if err != nil {
-		levelWants = logging.DEBUG
-	}
-
 	var (
 		i           = int64(0)
 		iToAlloc    = atomic.LoadInt64(&maxLines)
@@ -222,6 +217,8 @@ func GetLogs(c int, level string) []string {
 	a, b := loggingBuffer.Bytes2()
 	r := io.MultiReader(bytes.NewReader(a), bytes.NewReader(b))
 	br := bufio.NewReader(r)
+
+	levelWants := string2level(level)
 
 	for {
 		rec, err := br.ReadSlice('\n')
@@ -268,7 +265,7 @@ func parseLineLevel(rec []byte, maxLvl logging.Level) (line string, ok bool) {
 		return "", false
 	}
 
-	recLvl, err := bytes2logLevel(left[j+1:])
+	recLvl, err := logging.LogLevel(fastuse.Bytes2String(left[j+1:]))
 	if err != nil {
 		return "", false
 	}
@@ -280,16 +277,27 @@ func parseLineLevel(rec []byte, maxLvl logging.Level) (line string, ok bool) {
 	return "", false
 }
 
-func bytes2logLevel(p []byte) (logging.Level, error) {
-	return logging.LogLevel(fastuse.Bytes2String(p))
+func string2level(level string) logging.Level {
+	switch level {
+	case "debug":
+		return logging.DEBUG
+	case "info":
+		return logging.INFO
+	case "notice":
+		return logging.NOTICE
+	case "warning":
+		return logging.WARNING
+	case "err":
+		return logging.ERROR
+	default:
+		return logging.CRITICAL
+	}
+}
+
+func bytes2logLevel(p []byte) logging.Level {
+	return string2level(fastuse.Bytes2String(p))
 }
 
 func levelEnabled(base, level logging.Level) bool {
-	if base < logging.CRITICAL || base > logging.DEBUG {
-		return false
-	}
-	if level < logging.CRITICAL || level > logging.DEBUG {
-		return false
-	}
 	return level <= base
 }
