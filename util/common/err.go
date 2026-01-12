@@ -10,14 +10,12 @@ import (
 
 // NewErrorf creates a new error with formatted message.
 func NewErrorf(format string, a ...any) error {
-	msg := fmt.Sprintf(format, a...)
-	return errors.New(msg)
+	return fmt.Errorf(format, a...)
 }
 
 // NewError creates a new error from the given arguments.
 func NewError(a ...any) error {
-	msg := fmt.Sprintln(a...)
-	return errors.New(msg)
+	return errors.New(fmt.Sprintln(a...))
 }
 
 // Recover handles panic recovery and logs the panic error if a message is provided.

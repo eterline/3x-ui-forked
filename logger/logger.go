@@ -3,33 +3,36 @@
 package logger
 
 import (
+	"bufio"
+	"bytes"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"time"
+	"unsafe"
 
 	"github.com/mhsanaei/3x-ui/v2/config"
+	"github.com/mhsanaei/3x-ui/v2/util/ringbuffer"
 	"github.com/op/go-logging"
 )
 
 const (
-	maxLogBufferSize = 10240                 // Maximum log entries kept in memory
-	logFileName      = "3xui.log"            // Log file name
-	timeFormat       = "2006/01/02 15:04:05" // Log timestamp format
+	logFileName = "3xui.log"            // Log file name
+	timeFormat  = "2006/01/02 15:04:05" // Log timestamp format
 )
 
 var (
-	logger  *logging.Logger
-	logFile *os.File
-
-	// logBuffer maintains recent log entries in memory for web UI retrieval
-	logBuffer []struct {
-		time  string
-		level logging.Level
-		log   string
-	}
+	loggingBuffer *ringbuffer.ByteRing
+	logger        *logging.Logger
+	logFile       *os.File
 )
+
+func init() {
+	loggingBuffer = ringbuffer.NewByteRing(1 << 22) // 4MB
+}
 
 // InitLogger initializes dual logging backends: console/syslog and file.
 // Console logging uses the specified level, file logging always uses DEBUG level.
@@ -187,32 +190,81 @@ func Errorf(format string, args ...any) {
 
 // addToBuffer adds a log entry to the in-memory ring buffer for web UI retrieval.
 func addToBuffer(level string, newLog string) {
-	t := time.Now()
-	if len(logBuffer) >= maxLogBufferSize {
-		logBuffer = logBuffer[1:]
-	}
+	var b strings.Builder
+	b.Grow(len(newLog) + 64)
 
-	logLevel, _ := logging.LogLevel(level)
-	logBuffer = append(logBuffer, struct {
-		time  string
-		level logging.Level
-		log   string
-	}{
-		time:  t.Format(timeFormat),
-		level: logLevel,
-		log:   newLog,
-	})
+	b.WriteString(time.Now().Format(timeFormat))
+	b.WriteByte(' ')
+	b.WriteString(level)
+	b.WriteString(" - ")
+	b.WriteString(newLog)
+	b.WriteByte('\n')
+
+	loggingBuffer.Write([]byte(b.String()))
 }
 
 // GetLogs retrieves up to c log entries from the buffer that are at or below the specified level.
 func GetLogs(c int, level string) []string {
 	var output []string
-	logLevel, _ := logging.LogLevel(level)
+	levelWants, err := logging.LogLevel(level)
+	if err != nil {
+		levelWants = logging.DEBUG
+	}
 
-	for i := len(logBuffer) - 1; i >= 0 && len(output) <= c; i-- {
-		if logBuffer[i].level <= logLevel {
-			output = append(output, fmt.Sprintf("%s %s - %s", logBuffer[i].time, logBuffer[i].level, logBuffer[i].log))
+	a, b := loggingBuffer.Bytes2()
+	r := io.MultiReader(bytes.NewReader(a), bytes.NewReader(b))
+	br := bufio.NewReader(r)
+
+	for {
+		rec, err := br.ReadSlice('\n')
+		if err == bufio.ErrBufferFull {
+			continue
+		}
+
+		if err != nil {
+			if err == io.EOF {
+				if len(rec) > 0 {
+					if log, ok := parseLineLevel(rec, levelWants); ok {
+						output = append(output, log)
+					}
+				}
+			}
+			break
+		}
+
+		if log, ok := parseLineLevel(rec, levelWants); ok {
+			output = append(output, log)
 		}
 	}
+
 	return output
+}
+
+func parseLineLevel(rec []byte, maxLvl logging.Level) (line string, ok bool) {
+	i := bytes.Index(rec, []byte(" - "))
+	if i == -1 {
+		return "", false
+	}
+
+	left := rec[:i]
+
+	j := bytes.LastIndexByte(left, ' ')
+	if j == -1 || j+1 >= len(left) {
+		return "", false
+	}
+
+	recLvl, err := logging.LogLevel(bytes2String(left[j+1:]))
+	if err != nil {
+		return "", false
+	}
+
+	if recLvl <= maxLvl {
+		return string(rec), true
+	}
+
+	return "", false
+}
+
+func bytes2String(b []byte) string {
+	return unsafe.String(unsafe.SliceData(b), len(b))
 }
