@@ -3,37 +3,34 @@
 package logger
 
 import (
-	"bufio"
 	"bytes"
 	"fmt"
-	"io"
 	"os"
 	"path/filepath"
 	"runtime"
-	"strings"
-	"sync/atomic"
 	"time"
 
 	"github.com/mhsanaei/3x-ui/v2/config"
 	"github.com/mhsanaei/3x-ui/v2/util/fastuse"
+	"github.com/mhsanaei/3x-ui/v2/util/fixwrite"
 	"github.com/mhsanaei/3x-ui/v2/util/ringbuffer"
 	"github.com/op/go-logging"
 )
 
 const (
-	logFileName = "3xui.log"            // Log file name
-	timeFormat  = "2006/01/02 15:04:05" // Log timestamp format
+	logFileName  = "3xui.log"            // Log file name
+	timeFormat   = "2006/01/02 15:04:05" // Log timestamp format
+	logChunkSize = 512
 )
 
 var (
 	loggingBuffer *ringbuffer.ByteRing
-	maxLines      int64
 	logger        *logging.Logger
 	logFile       *os.File
 )
 
 func init() {
-	loggingBuffer = ringbuffer.NewByteRing(1 << 20 * 5) // 5MB
+	loggingBuffer = ringbuffer.NewByteRing(logChunkSize * 500) // 250KB
 }
 
 // InitLogger initializes dual logging backends: console/syslog and file.
@@ -192,67 +189,48 @@ func Errorf(format string, args ...any) {
 
 // addToBuffer adds a log entry to the in-memory ring buffer for web UI retrieval.
 func addToBuffer(level string, newLog string) {
-	var b strings.Builder
-	b.Grow(len(newLog) + 64)
+	buf := [512]byte{}
+	wr := fixwrite.NewFixedWriter(buf[:])
 
-	b.WriteByte('\t')
-	b.WriteString(time.Now().Format(timeFormat))
-	b.WriteByte(' ')
-	b.WriteString(level)
-	b.WriteString(" - ")
-	b.WriteString(newLog)
-	b.WriteByte('\n')
+	wr.Write([]byte(time.Now().Format(timeFormat)))
+	wr.WriteByte(' ')
+	wr.Write([]byte(level))
+	wr.Write([]byte(" - "))
+	wr.Write([]byte(newLog))
 
-	loggingBuffer.Write([]byte(b.String()))
+	loggingBuffer.Write(buf[:])
 }
 
 // GetLogs retrieves up to c log entries from the buffer that are at or below the specified level.
 func GetLogs(c int, level string) []string {
-	var (
-		i           = int64(0)
-		iToAlloc    = atomic.LoadInt64(&maxLines)
-		outputLines = make([]string, 0, iToAlloc)
-	)
+	if c <= 0 {
+		return nil
+	}
 
-	a, b := loggingBuffer.Bytes2()
-	r := io.MultiReader(bytes.NewReader(a), bytes.NewReader(b))
-	br := bufio.NewReader(r)
+	logs := make([]string, 0, c)
+	wantLevel := string2level(level)
 
-	levelWants := string2level(level)
+	b := loggingBuffer.Bytes()
 
-	for {
-		rec, err := br.ReadSlice('\n')
-		if err == bufio.ErrBufferFull {
+	for off := 0; off+logChunkSize <= len(b); off += logChunkSize {
+		chunk := fastuse.TrimZeros(b[off : off+logChunkSize])
+		line, ok := parseLineLevel(chunk, wantLevel)
+		if !ok {
 			continue
 		}
 
-		if err != nil {
-			if err == io.EOF {
-				if len(rec) > 0 {
-					if log, ok := parseLineLevel(rec, levelWants); ok {
-						outputLines = append(outputLines, log)
-						i++
-					}
-				}
-			}
-			break
-		}
-
-		if log, ok := parseLineLevel(rec, levelWants); ok {
-			outputLines = append(outputLines, log)
-			i++
+		if len(logs) == c {
+			copy(logs, logs[1:])
+			logs[c-1] = line
+		} else {
+			logs = append(logs, line)
 		}
 	}
 
-	atomic.CompareAndSwapInt64(&maxLines, iToAlloc, i)
-	return outputLines
+	return logs
 }
 
 func parseLineLevel(rec []byte, maxLvl logging.Level) (line string, ok bool) {
-	if bytes.IndexByte(rec, '\t') == -1 {
-		return "", false
-	}
-
 	i := bytes.Index(rec, []byte(" - "))
 	if i == -1 {
 		return "", false
@@ -271,7 +249,7 @@ func parseLineLevel(rec []byte, maxLvl logging.Level) (line string, ok bool) {
 	}
 
 	if levelEnabled(maxLvl, recLvl) {
-		return fastuse.Bytes2String(rec), true
+		return string(rec), true
 	}
 
 	return "", false
@@ -292,10 +270,6 @@ func string2level(level string) logging.Level {
 	default:
 		return logging.CRITICAL
 	}
-}
-
-func bytes2logLevel(p []byte) logging.Level {
-	return string2level(fastuse.Bytes2String(p))
 }
 
 func levelEnabled(base, level logging.Level) bool {

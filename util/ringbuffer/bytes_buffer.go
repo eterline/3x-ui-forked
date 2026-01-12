@@ -1,12 +1,16 @@
 package ringbuffer
 
-import "io"
+import (
+	"io"
+	"sync"
+)
 
 type ByteRing struct {
 	buffer   []byte
 	size     int64
 	writePos int64
 	headPos  int64
+	mu       sync.RWMutex
 }
 
 // NewByteRing - creates io.ReadWriter byte buffer for stream usage
@@ -32,42 +36,57 @@ func (r *ByteRing) Len() int {
 
 // Write - io.Writer implementation byte steram writing
 func (r *ByteRing) Write(p []byte) (n int, err error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
 
 	length := int64(len(p))
+	size := r.size
+
+	if length >= size {
+		p = p[length-size:]
+		length = size
+
+		copy(r.buffer, p)
+		r.headPos = 0
+		r.writePos = 0
+
+		return int(length), nil
+	}
 
 	wp := r.writePos
 	head := r.headPos
 
-	if wp < head && head-wp <= length {
-		return 0, ErrRingBufferOverflow
+	var used int64
+	if wp >= head {
+		used = wp - head
+	} else {
+		used = size - head + wp
 	}
 
-	if wp >= head && head+r.size-wp <= length {
-		return 0, ErrRingBufferOverflow
+	free := size - used
+
+	if length > free {
+		overwrite := length - free
+		r.headPos = (head + overwrite) % size
 	}
 
-	if wp < head || r.size-wp >= length { // no split needed
-
+	if wp+length <= size {
 		copy(r.buffer[wp:], p)
-		r.writePos = (wp + length) % r.size
-
-		return int(length), nil
-
-	} else { // split needed not enough contiguous memory
-
-		split := r.size - wp
-		left := length - split
-
+		r.writePos = (wp + length) % size
+	} else {
+		split := size - wp
 		copy(r.buffer[wp:], p[:split])
 		copy(r.buffer, p[split:])
-
-		r.writePos = left
-		return int(length), nil
+		r.writePos = length - split
 	}
+
+	return int(length), nil
 }
 
 // Read - io.Reader implementation byte steram reading
 func (r *ByteRing) Read(p []byte) (n int, err error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
 
 	length := int64(len(p))
 
@@ -111,17 +130,12 @@ func (r *ByteRing) Read(p []byte) (n int, err error) {
 	return int(size), nil
 }
 
-func (r *ByteRing) Bytes2() (a, b []byte) {
+func (r *ByteRing) Bytes() []byte {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+
 	head := r.headPos
 	write := r.writePos
 
-	if head == write {
-		return nil, nil
-	}
-
-	if head < write {
-		return r.buffer[head:write], nil
-	}
-
-	return r.buffer[head:], r.buffer[:write]
+	return r.buffer[head:write]
 }
