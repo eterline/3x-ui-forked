@@ -12,7 +12,8 @@
 
 1) In memory log buffer with zero allocation and API response.
 2) Some changes in build tools
-3) Later will be more optimizations... TCP/UDP conn count reader and e.t.c...
+3) API token auth use from ENV
+4) Later will be more optimizations... TCP/UDP conn count reader and e.t.c...
 
 ## Acknowledgment
 
