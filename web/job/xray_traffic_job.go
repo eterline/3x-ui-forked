@@ -90,13 +90,102 @@ func (j *XrayTrafficJob) Run() {
 
 }
 
+type Network struct {
+	Up   int64 `json:"up"`
+	Down int64 `json:"down"`
+}
+type Client struct {
+	ID         int     `json:"id"`
+	InboundID  int     `json:"inbound_id"`
+	Enable     bool    `json:"enable"`
+	Email      string  `json:"email"`
+	UUID       string  `json:"uuid"`
+	SubID      string  `json:"sub_id"`
+	Network    Network `json:"network"`
+	AllTime    int64   `json:"all_time"`
+	ExpiryTime int64   `json:"expiry_time"`
+	Total      int64   `json:"total"`
+	LastOnline int64   `json:"last_online"`
+	Reset      int     `json:"reset"`
+}
+type Endpoint struct {
+	Tag     string  `json:"tag"`
+	Type    string  `json:"type"`
+	Network Network `json:"network"`
+}
+
+func setType(isInbound, isOutbound bool) string {
+	switch {
+	case isInbound:
+		return "inbound"
+	case isOutbound:
+		return "outbound"
+	default:
+		return "unknown"
+	}
+}
+
+func xrayTrafficsToEndpoints(inboundTraffics []*xray.Traffic) []Endpoint {
+	s := make([]Endpoint, len(inboundTraffics))
+	for i, tr := range inboundTraffics {
+		s[i] = Endpoint{
+			Tag:  tr.Tag,
+			Type: setType(tr.IsInbound, tr.IsOutbound),
+			Network: Network{
+				Up:   tr.Up,
+				Down: tr.Down,
+			},
+		}
+	}
+	return s
+}
+
+func xrayClientsToClients(clientTraffics []*xray.ClientTraffic) []Client {
+	s := make([]Client, len(clientTraffics))
+	for i, tr := range clientTraffics {
+		s[i] = Client{
+			ID:        tr.Id,
+			InboundID: tr.InboundId,
+			Enable:    tr.Enable,
+			Email:     tr.Email,
+			UUID:      tr.UUID,
+			SubID:     tr.SubId,
+			Network: Network{
+				Up:   tr.Up,
+				Down: tr.Down,
+			},
+			AllTime:    tr.AllTime,
+			ExpiryTime: tr.ExpiryTime,
+			Total:      tr.Total,
+			Reset:      tr.Reset,
+			LastOnline: tr.LastOnline,
+		}
+	}
+	return s
+}
+
+type TrafficToExternal struct {
+	Clients   []Client
+	Endpoints []Endpoint
+}
+
+func newTrafficToExternal(inboundTraffics []*xray.Traffic, clientTraffics []*xray.ClientTraffic) TrafficToExternal {
+	return TrafficToExternal{
+		Clients:   xrayClientsToClients(clientTraffics),
+		Endpoints: xrayTrafficsToEndpoints(inboundTraffics),
+	}
+}
+
 func (j *XrayTrafficJob) informTrafficToExternalAPI(inboundTraffics []*xray.Traffic, clientTraffics []*xray.ClientTraffic) {
 	informURL, err := j.settingService.GetExternalTrafficInformURI()
 	if err != nil {
 		logger.Warning("get ExternalTrafficInformURI failed:", err)
 		return
 	}
-	requestBody, err := json.Marshal(map[string]any{"clientTraffics": clientTraffics, "inboundTraffics": inboundTraffics})
+
+	stats := newTrafficToExternal(inboundTraffics, clientTraffics)
+
+	requestBody, err := json.Marshal(stats)
 	if err != nil {
 		logger.Warning("parse client/inbound traffic failed:", err)
 		return

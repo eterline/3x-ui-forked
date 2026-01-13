@@ -9,17 +9,22 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
+type TesterBearer interface {
+	TestBearer(bearer string) bool
+}
+
 // APIController handles the main API routes for the 3x-ui panel, including inbounds and server management.
 type APIController struct {
 	BaseController
+	bearer            TesterBearer
 	inboundController *InboundController
 	serverController  *ServerController
 	Tgbot             service.Tgbot
 }
 
 // NewAPIController creates a new APIController instance and initializes its routes.
-func NewAPIController(g *gin.RouterGroup) *APIController {
-	a := &APIController{}
+func NewAPIController(b TesterBearer, g *gin.RouterGroup) *APIController {
+	a := &APIController{bearer: b}
 	a.initRouter(g)
 	return a
 }
@@ -27,11 +32,12 @@ func NewAPIController(g *gin.RouterGroup) *APIController {
 // checkAPIAuth is a middleware that returns 404 for unauthenticated API requests
 // to hide the existence of API endpoints from unauthorized users
 func (a *APIController) checkAPIAuth(c *gin.Context) {
-	if !session.IsLogin(c) {
-		c.AbortWithStatus(http.StatusNotFound)
+	if a.bearer.TestBearer(c.GetHeader("Authorization")) || session.IsLogin(c) {
+		c.Next()
 		return
 	}
-	c.Next()
+
+	c.AbortWithStatus(http.StatusNotFound)
 }
 
 // initRouter sets up the API routes for inbounds, server, and other endpoints.

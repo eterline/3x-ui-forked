@@ -19,6 +19,7 @@ import (
 	"github.com/mhsanaei/3x-ui/v2/config"
 	"github.com/mhsanaei/3x-ui/v2/logger"
 	"github.com/mhsanaei/3x-ui/v2/util/common"
+	"github.com/mhsanaei/3x-ui/v2/util/token"
 	"github.com/mhsanaei/3x-ui/v2/web/controller"
 	"github.com/mhsanaei/3x-ui/v2/web/job"
 	"github.com/mhsanaei/3x-ui/v2/web/locale"
@@ -180,6 +181,12 @@ func (s *Server) initRouter() (*gin.Engine, error) {
 		gin.SetMode(gin.ReleaseMode)
 	}
 
+	tokens, err := token.NewTokenAuthProvide(true, "XUI_TOKEN")
+	if err != nil {
+		return nil, err
+	}
+	logger.Infof("Use bearer token auth from env: %v", tokens.Enabled())
+
 	engine := gin.Default()
 
 	webDomain, err := s.settingService.GetWebDomain()
@@ -268,7 +275,7 @@ func (s *Server) initRouter() (*gin.Engine, error) {
 
 	s.index = controller.NewIndexController(g)
 	s.panel = controller.NewXUIController(g)
-	s.api = controller.NewAPIController(g)
+	s.api = controller.NewAPIController(tokens, g)
 
 	// Initialize WebSocket hub
 	s.wsHub = websocket.NewHub()
