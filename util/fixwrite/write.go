@@ -1,6 +1,11 @@
 package fixwrite
 
-import "errors"
+import (
+	"errors"
+	"io"
+
+	"github.com/mhsanaei/3x-ui/v2/util/fastuse"
+)
 
 var ErrBufferOverflow = errors.New("buffer overflow")
 
@@ -25,6 +30,10 @@ func (w *FixedWriter) Write(p []byte) (int, error) {
 	return len(p), nil
 }
 
+func (w *FixedWriter) WriteString(s string) (int, error) {
+	return w.Write([]byte(s))
+}
+
 func (w *FixedWriter) WriteByte(b byte) error {
 	if w.pos >= len(w.buf) {
 		return ErrBufferOverflow
@@ -33,4 +42,17 @@ func (w *FixedWriter) WriteByte(b byte) error {
 	w.buf[w.pos] = b
 	w.pos++
 	return nil
+}
+
+func (w *FixedWriter) Bytes() []byte {
+	return w.buf
+}
+
+func (w *FixedWriter) String() string {
+	return fastuse.Bytes2String(w.buf)
+}
+
+func (w *FixedWriter) WriteTo(wr io.Writer) (n int64, err error) {
+	c, err := wr.Write(w.buf)
+	return int64(c), err
 }

@@ -193,13 +193,13 @@ func addToBuffer(level string, newLog string) {
 	buf := [logMemChunkSize]byte{}
 	wr := fixwrite.NewFixedWriter(buf[:])
 
-	wr.Write([]byte(time.Now().Format(timeFormat)))
-	wr.WriteByte(' ')
-	wr.Write([]byte(level))
-	wr.Write([]byte(" - "))
-	wr.Write([]byte(newLog))
+	wr.WriteString(time.Now().Format(timeFormat))
+	wr.WriteString(" ")
+	wr.WriteString(level)
+	wr.WriteString(" - ")
+	wr.WriteString(newLog)
 
-	loggingBuffer.Write(buf[:])
+	wr.WriteTo(loggingBuffer)
 }
 
 // GetLogs retrieves up to c log entries from the buffer that are at or below the specified level.
