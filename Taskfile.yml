@@ -62,7 +62,7 @@ tasks:
             ARCH: ['amd64', 'arm64']
         cmd: |
           echo "Build for -> {{.ITEM.OS}}/{{.ITEM.ARCH}}: {{.BIN}}-{{.ITEM.OS}}-{{.ITEM.ARCH}}{{if eq .ITEM.OS "windows"}}.exe{{end}}" && \
-          GOOS={{.ITEM.OS}} GOARCH={{.ITEM.ARCH}} CGO_ENABLED=0 \
+          GOOS={{.ITEM.OS}} GOARCH={{.ITEM.ARCH}} CGO_ENABLED={{if eq .ITEM.OS "windows"}}0{{else}}1{{end}} \
           go build -trimpath -ldflags="{{.GO_FLAGS}}" \
           -o "./{{.OUT}}/{{.BIN}}-{{.ITEM.OS}}-{{.ITEM.ARCH}}{{if eq .ITEM.OS "windows"}}.exe{{end}}" \
           -v "./main.go"
