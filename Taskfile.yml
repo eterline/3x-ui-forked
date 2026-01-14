@@ -42,6 +42,26 @@ tasks:
         -v "./main.go"
       - echo "=== Build Completed ==="
 
+    # Build binary
+  build-linux:
+    desc: "Build binary"
+    silent: true
+    cmds:
+      - echo "=== Building Binary ==="
+      - |
+        go build -ldflags="-s -w" \
+        -o "./{{.BIN}}" \
+        -v "./main.go"
+      - echo "=== Build Completed ==="
+
+  # Build binary
+  run:
+    desc: "Run binary"
+    silent: true
+    cmds:
+      - task: build
+      - ./{{.BIN}}.exe
+
   # Build binary
   run:
     desc: "Run binary"
@@ -58,8 +78,8 @@ tasks:
       - mkdir -p "{{.OUT}}"
       - for:
           matrix:
-            OS: ['windows', 'linux', 'darwin']
-            ARCH: ['amd64', 'arm64']
+            OS: ['windows', 'linux']
+            ARCH: ['amd64']
         cmd: |
           echo "Build for -> {{.ITEM.OS}}/{{.ITEM.ARCH}}: {{.BIN}}-{{.ITEM.OS}}-{{.ITEM.ARCH}}{{if eq .ITEM.OS "windows"}}.exe{{end}}" && \
           GOOS={{.ITEM.OS}} GOARCH={{.ITEM.ARCH}} CGO_ENABLED={{if eq .ITEM.OS "windows"}}0{{else}}1{{end}} \
