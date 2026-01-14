@@ -42,6 +42,14 @@ tasks:
         -v "./main.go"
       - echo "=== Build Completed ==="
 
+  # Build binary
+  run:
+    desc: "Run binary"
+    silent: true
+    cmds:
+      - task: build
+      - ./{{.BIN}}.exe
+
   build-all:
     desc: "Build binaries for multiple OS/ARCH"
     silent: true

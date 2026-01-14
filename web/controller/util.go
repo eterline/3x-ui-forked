@@ -12,6 +12,22 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
+func endpointsTagsByProto(endpoints []any, proto string) (tags []string) {
+	tags = make([]string, 0, len(endpoints))
+
+	for _, endp := range endpoints {
+		if e, ok := endp.(map[string]any); ok {
+			if e["protocol"] == proto {
+				if tag, ok := e["tag"].(string); ok {
+					tags = append(tags, tag)
+				}
+			}
+		}
+	}
+
+	return tags
+}
+
 // getRemoteIp extracts the real IP address from the request headers or remote address.
 func getRemoteIp(c *gin.Context) string {
 	value := c.GetHeader("X-Real-IP")
