@@ -60,7 +60,7 @@ tasks:
     silent: true
     cmds:
       - echo "=== Building image ==="
-      - docker build -t ghcr.io/eterline/3x-ui-forked:$(cat ./config/version) .
+      - docker build --label org.opencontainers.image.source=https://github.com/eterline/3x-ui-forked -t ghcr.io/eterline/3x-ui-forked:$(cat ./config/version) .
       - echo "=== Build Completed ==="
 
   # Build binary
