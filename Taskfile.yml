@@ -42,7 +42,7 @@ tasks:
         -v "./main.go"
       - echo "=== Build Completed ==="
 
-    # Build binary
+  # Build binary
   build-linux:
     desc: "Build binary"
     silent: true
@@ -52,6 +52,15 @@ tasks:
         go build -ldflags="-s -w" \
         -o "./{{.BIN}}" \
         -v "./main.go"
+      - echo "=== Build Completed ==="
+
+  # Build docker image container
+  build-image:
+    desc: "Build image docker"
+    silent: true
+    cmds:
+      - echo "=== Building image ==="
+      - docker build -t ghcr.io/eterline/3x-ui-forked:$(cat ./config/version) .
       - echo "=== Build Completed ==="
 
   # Build binary

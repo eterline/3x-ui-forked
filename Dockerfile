@@ -1,7 +1,7 @@
 # ========================================================
 # Stage: Builder
 # ========================================================
-FROM golang:1.25-alpine AS builder
+FROM golang:1.25.5-alpine AS builder
 WORKDIR /app
 ARG TARGETARCH
 
@@ -15,14 +15,14 @@ COPY . .
 
 ENV CGO_ENABLED=1
 ENV CGO_CFLAGS="-D_LARGEFILE64_SOURCE"
-RUN go build -ldflags "-w -s" -o build/x-ui main.go
+RUN go build -trimpath -ldflags "-w -s" -o build/x-ui main.go
 RUN ./DockerInit.sh "$TARGETARCH"
 
 # ========================================================
 # Stage: Final Image of 3x-ui
 # ========================================================
 FROM alpine
-ENV TZ=Asia/Tehran
+ENV TZ=Asia/Irkutsk
 WORKDIR /app
 
 RUN apk add --no-cache --update \
@@ -49,7 +49,7 @@ RUN chmod +x \
   /usr/bin/x-ui
 
 ENV XUI_ENABLE_FAIL2BAN="true"
-EXPOSE 2053
+EXPOSE 3000
 VOLUME [ "/etc/x-ui" ]
 CMD [ "./x-ui" ]
 ENTRYPOINT [ "/app/DockerEntrypoint.sh" ]

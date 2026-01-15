@@ -2,6 +2,7 @@ package job
 
 import (
 	"encoding/json"
+	"time"
 
 	"github.com/mhsanaei/3x-ui/v2/logger"
 	"github.com/mhsanaei/3x-ui/v2/web/service"
@@ -140,6 +141,20 @@ func xrayTrafficsToEndpoints(inboundTraffics []*xray.Traffic) []Endpoint {
 	return s
 }
 
+type TrafficToExternal struct {
+	Timestamp string     `json:"timestamp"`
+	Clients   []Client   `json:"clients"`
+	Endpoints []Endpoint `json:"endpoints"`
+}
+
+func newTrafficToExternal(inboundTraffics []*xray.Traffic, clientTraffics []*xray.ClientTraffic) TrafficToExternal {
+	return TrafficToExternal{
+		Timestamp: time.Now().Format(time.RFC3339),
+		Clients:   xrayClientsToClients(clientTraffics),
+		Endpoints: xrayTrafficsToEndpoints(inboundTraffics),
+	}
+}
+
 func xrayClientsToClients(clientTraffics []*xray.ClientTraffic) []Client {
 	s := make([]Client, len(clientTraffics))
 	for i, tr := range clientTraffics {
@@ -162,18 +177,6 @@ func xrayClientsToClients(clientTraffics []*xray.ClientTraffic) []Client {
 		}
 	}
 	return s
-}
-
-type TrafficToExternal struct {
-	Clients   []Client
-	Endpoints []Endpoint
-}
-
-func newTrafficToExternal(inboundTraffics []*xray.Traffic, clientTraffics []*xray.ClientTraffic) TrafficToExternal {
-	return TrafficToExternal{
-		Clients:   xrayClientsToClients(clientTraffics),
-		Endpoints: xrayTrafficsToEndpoints(inboundTraffics),
-	}
 }
 
 func (j *XrayTrafficJob) informTrafficToExternalAPI(inboundTraffics []*xray.Traffic, clientTraffics []*xray.ClientTraffic) {
