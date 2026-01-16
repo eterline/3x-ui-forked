@@ -2,20 +2,20 @@ version: '3'
 
 # ============== Variables ==============
 vars:
-  # Short git commit hash
-  COMMIT_HASH:
-    sh: git rev-parse --short HEAD
-  # Latest tag version
+
   VERSION:
-    sh: git describe --tags --abbrev=0
+    sh: cat ./config/version
+  GIT_SHA:
+    sh: git rev-parse --short HEAD
+  BUILD_DATE:
+    sh: date -u +'%Y-%m-%dT%H:%M:%SZ'
+
   # Go build flags with embedded version info
   GO_FLAGS: "-s -w"
 
   DEV_RUN_FLAGS: ""
-
   BIN: x-ui
   OUT: ./dist
-  PLATFORMS: ["linux amd64", "freebsd amd64","windows amd64"]
 
 # ============== Tasks ==============
 tasks:
@@ -60,7 +60,18 @@ tasks:
     silent: true
     cmds:
       - echo "=== Building image ==="
-      - docker build --label org.opencontainers.image.source=https://github.com/eterline/3x-ui-forked -t ghcr.io/eterline/3x-ui-forked:$(cat ./config/version) .
+      - |
+        docker build \
+          -t ghcr.io/eterline/3x-ui-forked:${VERSION} \
+          -t ghcr.io/eterline/3x-ui-forked:latest \
+          --label org.opencontainers.image.title="3x-ui-forked" \
+          --label org.opencontainers.image.description="Fork of 3x-ui with custom changes" \
+          --label org.opencontainers.image.version="${VERSION}" \
+          --label org.opencontainers.image.source="https://github.com/eterline/3x-ui-forked" \
+          --label org.opencontainers.image.revision="${GIT_SHA}" \
+          --label org.opencontainers.image.created="${BUILD_DATE}" \
+          --label org.opencontainers.image.licenses="GPL-3.0" \
+          .
       - echo "=== Build Completed ==="
 
   # Build binary
