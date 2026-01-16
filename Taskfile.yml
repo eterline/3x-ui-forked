@@ -62,14 +62,14 @@ tasks:
       - echo "=== Building image ==="
       - |
         docker build \
-          -t ghcr.io/eterline/3x-ui-forked:${VERSION} \
+          -t ghcr.io/eterline/3x-ui-forked:{{.VERSION}} \
           -t ghcr.io/eterline/3x-ui-forked:latest \
           --label org.opencontainers.image.title="3x-ui-forked" \
           --label org.opencontainers.image.description="Fork of 3x-ui with custom changes" \
-          --label org.opencontainers.image.version="${VERSION}" \
+          --label org.opencontainers.image.version="{{.VERSION}}" \
           --label org.opencontainers.image.source="https://github.com/eterline/3x-ui-forked" \
-          --label org.opencontainers.image.revision="${GIT_SHA}" \
-          --label org.opencontainers.image.created="${BUILD_DATE}" \
+          --label org.opencontainers.image.revision="{{.GIT_SHA}}" \
+          --label org.opencontainers.image.created="{{.BUILD_DATE}}" \
           --label org.opencontainers.image.licenses="GPL-3.0" \
           .
       - echo "=== Build Completed ==="
