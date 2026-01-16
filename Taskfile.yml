@@ -38,7 +38,7 @@ tasks:
       - echo "=== Building Binary ==="
       - |
         go build -ldflags="-s -w" \
-        -o "./{{.BIN}}.exe" \
+        -o "./{{.BIN}}" \
         -v "./main.go"
       - echo "=== Build Completed ==="
 
