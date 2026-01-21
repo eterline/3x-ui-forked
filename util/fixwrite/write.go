@@ -18,6 +18,41 @@ func NewFixedWriter(b []byte) *FixedWriter {
 	return &FixedWriter{buf: b}
 }
 
+func (w *FixedWriter) Pos() int {
+	return w.pos
+}
+
+func (w *FixedWriter) Reserve(n int) []byte {
+	start := w.pos
+	if w.pos+n > len(w.buf) {
+		w.pos = len(w.buf)
+		return w.buf[start:]
+	}
+	w.pos += n
+	return w.buf[start:w.pos]
+}
+
+func (w *FixedWriter) SetPos(n int) {
+	if n >= 0 {
+		w.pos = n
+	}
+}
+
+func (w *FixedWriter) Skip(n int) (int, error) {
+	if n <= 0 {
+		return 0, nil
+	}
+
+	remain := len(w.buf) - w.pos
+	if n > remain {
+		w.pos += remain
+		return remain, ErrBufferOverflow
+	}
+
+	w.pos += n
+	return n, nil
+}
+
 func (w *FixedWriter) Write(p []byte) (int, error) {
 	if w.pos+len(p) > len(w.buf) {
 		n := copy(w.buf[w.pos:], p)

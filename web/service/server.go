@@ -26,6 +26,7 @@ import (
 	"github.com/mhsanaei/3x-ui/v2/util/common"
 	"github.com/mhsanaei/3x-ui/v2/util/fastuse"
 	"github.com/mhsanaei/3x-ui/v2/util/sys"
+	"github.com/mhsanaei/3x-ui/v2/util/xraylog"
 	"github.com/mhsanaei/3x-ui/v2/xray"
 
 	"github.com/google/uuid"
@@ -789,110 +790,59 @@ func (s *ServerService) GetXrayLogs(
 
 	scanner := bufio.NewScanner(file)
 
-	var (
-		apiSubBytes    = []byte("api -> api")
-		filterSubBytes = []byte(filter)
-
-		fromSubBytes     = []byte("from ")
-		acceptedSubBytes = []byte("accepted ")
-		emailSubBytes    = []byte("email ")
-	)
-
 	for scanner.Scan() {
 		record := scanner.Bytes()
 
-		//skipping empty lines and api calls
-		if len(record) == 0 || bytes.Contains(record, apiSubBytes) {
+		if xraylog.RecordIsApiCallOrEmpty(record) {
 			continue
 		}
 
-		//applying filter if it's not empty
-		if len(filterSubBytes) > 0 && bytes.Contains(record, filterSubBytes) {
+		if xraylog.RecordNotMatchedInFilter(record, []byte(filter)) {
 			continue
 		}
 
-		var (
-			recordParts = bytes.Fields(record)
-			entry       = LogEntry{}
-		)
-
-		if len(recordParts) < 2 {
-			continue // skip
-		}
-
-		// more optimized usage with hotpath testing records, lower allocations in invalid line test
-		// lookup route inbound and outbound
-		if routeIdxStart := bytes.LastIndexByte(record, '['); routeIdxStart != -1 {
-			if routeIdxEnd := bytes.LastIndexByte(record[routeIdxStart:], ']'); routeIdxEnd != -1 {
-				inOut := record[routeIdxStart+1 : routeIdxStart+routeIdxEnd]
-				routeFields := bytes.Fields(inOut)
-
-				if len(routeFields) < 3 {
-					continue
-				}
-
-				outboundBytes := routeFields[2]
-
-				if logEntryContains(outboundBytes, freedoms) {
-					if showDirect == "false" {
-						continue
-					}
-					entry.Event = Direct
-				} else if logEntryContains(outboundBytes, blackholes) {
-					if showBlocked == "false" {
-						continue
-					}
-					entry.Event = Blocked
-				} else {
-					if showProxy == "false" {
-						continue
-					}
-					entry.Event = Proxied
-				}
-
-				entry.Inbound = string(routeFields[0])
-				entry.Outbound = string(routeFields[2])
-			}
-		} else {
-			continue
-		}
-
-		logTime, ok := parseLogTimestamp(recordParts[0], recordParts[1])
+		timeIs, ok := xraylog.RecordTimestamp(record)
 		if !ok {
 			continue
 		}
-		entry.DateTime = logTime
 
-		// lookup from addr
-		if lookIdx := bytes.Index(record, fromSubBytes); lookIdx != -1 {
-			fromStart := lookIdx + len(fromSubBytes)
-			fromEnd := bytes.IndexByte(record[fromStart:], ' ')
-			if fromEnd == -1 {
+		inb, outb, ok := xraylog.RecordRoute(record)
+		if !ok {
+			continue
+		}
+
+		from, to, ok := xraylog.RecordAddrs(record)
+		if !ok {
+			continue
+		}
+
+		entry := LogEntry{
+			DateTime:    timeIs,
+			FromAddress: from,
+			ToAddress:   to,
+			Inbound:     inb,
+			Outbound:    outb,
+		}
+
+		if email, ok := xraylog.RecordEmail(record); ok {
+			entry.Email = email
+		}
+
+		if xraylog.RecordContains(record, freedoms) {
+			if showDirect == "false" {
 				continue
 			}
-			fromField := record[fromStart : fromStart+fromEnd]
-			entry.FromAddress = string(bytes.TrimLeft(fromField, "/"))
-		}
-
-		// lookup accepted
-		if accIdx := bytes.Index(record, acceptedSubBytes); accIdx != -1 {
-			accStart := accIdx + len(acceptedSubBytes)
-			accEnd := bytes.IndexByte(record[accStart:], ' ')
-			if accEnd == -1 {
-				accEnd = len(record) - accStart
+			entry.Event = Direct
+		} else if xraylog.RecordContains(record, blackholes) {
+			if showBlocked == "false" {
+				continue
 			}
-			toField := record[accStart : accStart+accEnd]
-			entry.ToAddress = string(bytes.TrimLeft(toField, "/"))
-		}
-
-		// lookup email
-		if lookIdx := bytes.Index(record, emailSubBytes); lookIdx != -1 {
-			emailStart := lookIdx + len(emailSubBytes)
-			emailEnd := bytes.IndexByte(record[emailStart:], ' ')
-			if emailEnd == -1 {
-				emailEnd = len(record) - emailStart
+			entry.Event = Blocked
+		} else {
+			if showProxy == "false" {
+				continue
 			}
-			entry.Email = string(record[emailStart : emailStart+emailEnd])
+			entry.Event = Proxied
 		}
 
 		if len(entries) > countInt {
@@ -903,32 +853,6 @@ func (s *ServerService) GetXrayLogs(
 	}
 
 	return entries
-}
-
-func parseLogTimestamp(partDate, partTime []byte) (time.Time, bool) {
-
-	var b strings.Builder
-	b.Grow(len(partDate) + 1 + len(partTime))
-	b.Write(partDate)
-	b.WriteByte(' ')
-	b.Write(partTime)
-	dateTimeStr := b.String()
-
-	dateTime, err := time.ParseInLocation("2006/01/02 15:04:05.999999", dateTimeStr, time.Local)
-	if err != nil {
-		return time.Time{}, false
-	}
-
-	return dateTime.UTC(), true
-}
-
-func logEntryContains(line []byte, suffixes []string) bool {
-	for _, sfx := range suffixes {
-		if bytes.Contains(line, []byte(sfx)) {
-			return true
-		}
-	}
-	return false
 }
 
 func (s *ServerService) GetConfigJson() (any, error) {

@@ -18,10 +18,11 @@ import (
 )
 
 const (
-	logFileName     = "3xui.log"            // Log file name
-	timeFormat      = "2006/01/02 15:04:05" // Log timestamp format
-	logMemChunkSize = 512
-	logMemLines     = 1000
+	logFileName     = "3xui.log"                    // Log file name
+	timeFormat      = "2006/01/02 15:04:05"         // Log timestamp format
+	logMemChunkSize = 1 << 10                       // 1 KB
+	logMemLines     = 1 << 10                       // 1024
+	logBufferSize   = logMemChunkSize * logMemLines // 1MB
 )
 
 var (
@@ -31,7 +32,7 @@ var (
 )
 
 func init() {
-	loggingBuffer = ringbuffer.NewByteRing(logMemChunkSize * logMemLines) // 500KB
+	loggingBuffer = ringbuffer.NewByteRing(logBufferSize)
 }
 
 // InitLogger initializes dual logging backends: console/syslog and file.
@@ -192,8 +193,12 @@ func Errorf(format string, args ...any) {
 func addToBuffer(level string, newLog string) {
 	buf := [logMemChunkSize]byte{}
 	wr := fixwrite.NewFixedWriter(buf[:])
-
-	wr.WriteString(time.Now().Format(timeFormat))
+	{
+		// timestamp
+		dst := wr.Reserve(64)
+		dst = time.Now().AppendFormat(dst[:0], timeFormat)
+		wr.SetPos(wr.Pos() - (64 - len(dst)))
+	}
 	wr.WriteString(" ")
 	wr.WriteString(level)
 	wr.WriteString(" - ")
@@ -214,7 +219,7 @@ func GetLogs(c int, level string) []string {
 	b := loggingBuffer.Bytes()
 
 	for off := 0; off+logMemChunkSize <= len(b); off += logMemChunkSize {
-		chunk := fastuse.TrimZeros(b[off : off+logMemChunkSize])
+		chunk := fastuse.TrimZerosRight(b[off : off+logMemChunkSize])
 		line, ok := parseLineLevel(chunk, wantLevel)
 		if !ok {
 			continue
@@ -227,6 +232,8 @@ func GetLogs(c int, level string) []string {
 			logs = append(logs, line)
 		}
 	}
+
+	fastuse.ReverseSlice(logs)
 
 	return logs
 }
