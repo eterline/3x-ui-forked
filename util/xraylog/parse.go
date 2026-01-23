@@ -97,12 +97,16 @@ func RecordIsApiCallOrEmpty(record []byte) bool {
 	return len(record) == 0 || bytes.Contains(record, apiSubBytes)
 }
 
-func RecordNotMatchedInFilter(record, filteringBytes []byte) bool {
-	if len(filteringBytes) <= 0 {
-		return false
+func FoundInRecordByFilter(record, fliter []byte) bool {
+	fliter = bytes.TrimSpace(fliter)
+	if len(fliter) == 0 {
+		return true
 	}
+	return bytes.Contains(record, fliter)
+}
 
-	return !bytes.Contains(record, apiSubBytes)
+func FoundInRecordByFilterString(record []byte, fliter string) bool {
+	return FoundInRecordByFilter(record, []byte(fliter))
 }
 
 func RecordContains(line []byte, suffixes []string) bool {

@@ -191,6 +191,8 @@ func TestRecordsExample(t *testing.T) {
 		emailValues = map[string]int{}
 	)
 
+	var filterMatches int = 0
+
 	for scanner.Scan() {
 		totalLines++
 		record := scanner.Bytes()
@@ -200,7 +202,11 @@ func TestRecordsExample(t *testing.T) {
 			continue
 		}
 
-		if xraylog.RecordNotMatchedInFilter(record, nil) {
+		if xraylog.FoundInRecordByFilterString(record, "www.google.com") {
+			filterMatches++
+		}
+
+		if !xraylog.FoundInRecordByFilterString(record, "") {
 			t.Fatalf("record must not be filtered: %s", record)
 		}
 
@@ -237,6 +243,11 @@ func TestRecordsExample(t *testing.T) {
 	}
 
 	// ---------- ASSERTS ----------
+
+	if filterMatches != 5 {
+		t.Fatalf("filter must match 5 lines, but matched = %d", filterMatches)
+	}
+
 	if totalLines != 26 {
 		t.Fatalf("totalLines = %d, want 26", totalLines)
 	}

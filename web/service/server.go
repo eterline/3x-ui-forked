@@ -797,7 +797,7 @@ func (s *ServerService) GetXrayLogs(
 			continue
 		}
 
-		if xraylog.RecordNotMatchedInFilter(record, []byte(filter)) {
+		if !xraylog.FoundInRecordByFilterString(record, filter) {
 			continue
 		}
 
@@ -860,6 +860,7 @@ func (s *ServerService) GetConfigJson() (any, error) {
 	if err != nil {
 		return nil, err
 	}
+
 	contents, err := json.MarshalIndent(config, "", "  ")
 	if err != nil {
 		return nil, err
